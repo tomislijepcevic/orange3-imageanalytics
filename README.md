@@ -1,7 +1,5 @@
 Orange3 Image Analytics 
-============
-[![Build Status](https://travis-ci.org/biolab/orange3-imageanalytics.svg?branch=master)](https://travis-ci.org/biolab/orange3-imageanalytics)
-[![codecov](https://codecov.io/gh/biolab/orange3-imageanalytics/branch/master/graph/badge.svg)](https://codecov.io/gh/biolab/orange3-imageanalytics)
+=======================
 
 Orange3 Image Analytics is an add-on for the [Orange3](http://orange.biolab.si) data mining suite. It provides extensions for importing/creating labeled image data sets and embedding them through a variety of pre-trained deep neural networks.
 
@@ -27,8 +25,7 @@ which is sometimes preferable as you can *pip uninstall* packages later.
 Usage
 -----
 
-After the installation the widgets from this add-on are registered with Orange. To run Orange from the terminal
-use
+After the installation the widgets from this add-on are registered with Orange. To run Orange from the terminal use
 
     orange-canvas
 
