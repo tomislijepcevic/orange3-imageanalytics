@@ -1,69 +1,52 @@
-import ftplib
 import logging
-from io import BytesIO
-from itertools import islice
 from os.path import join, isfile
-from urllib.parse import urlparse
-from urllib.request import urlopen, URLError
+from itertools import islice
 
 import cachecontrol.caches
 import numpy as np
 import requests
 from Orange.misc.environ import cache_dir
-from PIL import ImageFile
-from PIL.Image import open as open_image, LANCZOS
-from requests.exceptions import RequestException
 
-from orangecontrib.imageanalytics.http2_client import Http2Client
-from orangecontrib.imageanalytics.http2_client import MaxNumberOfRequestsError
-from orangecontrib.imageanalytics.utils import md5_hash
-from orangecontrib.imageanalytics.utils import save_pickle, load_pickle
+from orangecontrib.textembedding.http2_client import Http2Client
+from orangecontrib.textembedding.http2_client import MaxNumberOfRequestsError
+from orangecontrib.textembedding.utils import md5_hash
+from orangecontrib.textembedding.utils import save_pickle, load_pickle
 
 log = logging.getLogger(__name__)
-ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 MODELS = {
-    'inception-v3': {
-        'name': 'Inception v3',
-        'description': 'Google\'s Inception v3 model trained on ImageNet.',
-        'target_image_size': (299, 299),
+    'pubmed': {
+        'name': 'PubMed',
+        'description': 'CNN model trained on abstracts from MEDLINE.',
         'layers': ['penultimate']
-    },
-    'painters': {
-        'name': 'Painters',
-        'description':
-            'A model trained to predict painters from artwork images.',
-        'target_image_size': (256, 256),
-        'layers': ['penultimate']
-    },
+    }
 }
 
 
 class EmbeddingCancelledException(Exception):
     """Thrown when the embedding task is cancelled from another thread.
-    (i.e. ImageEmbedder.cancelled attribute is set to True).
+    (i.e. TextEmbedder.cancelled attribute is set to True).
     """
 
 
-class ImageEmbedder(Http2Client):
+class TextEmbedder(Http2Client):
     """"Client side functionality for accessing a remote http2
-    image embedding backend.
+    text embedding backend.
 
     Examples
     --------
-    >>> from orangecontrib.imageanalytics.image_embedder import ImageEmbedder
-    >>> image_file_paths = [...]
-    >>> with ImageEmbedder(model='model_name', layer='penultimate') as embedder:
-    ...    embeddings = embedder(image_file_paths)
+    >>> from orangecontrib.textembedding.text_embedder import TextEmbedder
+    >>> texts_file_paths = [...]
+    >>> with TextEmbedder(model='model_name', layer='penultimate') as embedder:
+    ...    embeddings = embedder(text_file_paths)
     """
     _cache_file_blueprint = '{:s}_{:s}_embeddings.pickle'
 
-    def __init__(self, model, layer, server_url='api.biolab.si:8080'):
+    def __init__(self, model, layer, server_url='kista:8080'):
         super().__init__(server_url)
         model_settings = self._get_model_settings_confidently(model, layer)
         self._model = model
         self._layer = layer
-        self._target_image_size = model_settings['target_image_size']
 
         cache_file_path = self._cache_file_blueprint.format(model, layer)
         self._cache_file_path = join(cache_dir(), cache_file_path)
@@ -72,7 +55,7 @@ class ImageEmbedder(Http2Client):
         self._session = cachecontrol.CacheControl(
             requests.session(),
             cache=cachecontrol.caches.FileCache(
-                join(cache_dir(), __name__ + ".ImageEmbedder.httpcache"))
+                join(cache_dir(), __name__ + ".TextEmbedder.httpcache"))
         )
 
         # attribute that offers support for cancelling the embedding
@@ -93,7 +76,8 @@ class ImageEmbedder(Http2Client):
                 "'{:s}' is not a valid layer for the '{:s}'"
                 " model, should be one of: {:s}")
             available_layers = ', '.join(model_settings['layers'])
-            raise ValueError(layer_error.format(layer, model, available_layers))
+            raise ValueError(layer_error.format(
+                layer, model, available_layers))
 
         return model_settings
 
@@ -106,25 +90,25 @@ class ImageEmbedder(Http2Client):
 
         return {}
 
-    def __call__(self, file_paths, image_processed_callback=None):
-        """Send the images to the remote server in batches. The batch size
+    def __call__(self, corpus, text_processed_callback=None):
+        """Send the texts to the remote server in batches. The batch size
         parameter is set by the http2 remote peer (i.e. the server).
 
         Parameters
         ----------
-        file_paths: list
-            A list of file paths for images to be embedded.
+        corpus: Corpus
+            A corpus of texts to be embedded.
 
-        image_processed_callback: callable (default=None)
-            A function that is called after each image is fully processed
+        text_processed_callback: callable (default=None)
+            A function that is called after each text is fully processed
             by either getting a successful response from the server,
-            getting the result from cache or skipping the image.
+            getting the result from cache or skipping the text.
 
         Returns
         -------
         embeddings: array-like
             Array-like of float16 arrays (embeddings) for
-            successfully embedded images and Nones for skipped images.
+            successfully embedded texts and Nones for skipped texts.
 
         Raises
         ------
@@ -140,10 +124,10 @@ class ImageEmbedder(Http2Client):
 
         all_embeddings = []
 
-        for batch in self._yield_in_batches(file_paths):
+        for batch in self._yield_in_batches(corpus.documents):
             try:
                 embeddings = self._send_to_server(
-                    batch, image_processed_callback
+                    batch, text_processed_callback
                 )
             except MaxNumberOfRequestsError:
                 # maximum number of http2 requests through a single
@@ -153,7 +137,7 @@ class ImageEmbedder(Http2Client):
                 # is usually set to >= 1000 requests in http2)
                 self.reconnect_to_server()
                 embeddings = self._send_to_server(
-                    batch, image_processed_callback
+                    batch, text_processed_callback
                 )
 
             all_embeddings += embeddings
@@ -176,42 +160,35 @@ class ImageEmbedder(Http2Client):
             if num_yielded == len(list_):
                 return
 
-    def _send_to_server(self, file_paths, image_processed_callback):
-        """ Load images and compute cache keys and send requests to
+    def _send_to_server(self, texts, text_processed_callback):
+        """ Load texts and compute cache keys and send requests to
         an http2 server for valid ones.
         """
         cache_keys = []
         http_streams = []
 
-        for file_path in file_paths:
+        for text in texts:
             if self.cancelled:
                 raise EmbeddingCancelledException()
 
-            image = self._load_image_or_none(file_path)
-            if not image:
-                # skip the sending because image was skipped at loading
-                http_streams.append(None)
-                cache_keys.append(None)
-                continue
-
-            cache_key = md5_hash(image)
+            cache_key = md5_hash(text.encode('utf-8'))
             cache_keys.append(cache_key)
-            if cache_key in self._cache_dict:
-                # skip the sending because image is present in the
+            if cache_key in self._cache_dict and False:
+                # skip the sending because text is present in the
                 # local cache
                 http_streams.append(None)
                 continue
 
             try:
                 headers = {
-                    'Content-Type': 'image/jpeg',
-                    'Content-Length': str(len(image))
+                    'Content-Type': 'text/plain',
+                    'Content-Length': str(len(text))
                 }
                 stream_id = self._send_request(
                     method='POST',
-                    url='/image/' + self._model,
+                    url='/text/' + self._model,
                     headers=headers,
-                    body_bytes=image
+                    body_bytes=text
                 )
                 http_streams.append(stream_id)
             except ConnectionError:
@@ -222,56 +199,11 @@ class ImageEmbedder(Http2Client):
         return self._get_responses_from_server(
             http_streams,
             cache_keys,
-            image_processed_callback
+            text_processed_callback
         )
 
-    def _load_image_or_none(self, file_path):
-        image = self._load_image_from_url_or_local_path(file_path)
-
-        if image is None:
-            return image
-
-        if not image.mode == 'RGB':
-            try:
-                image = image.convert('RGB')
-            except ValueError:
-                return None
-
-        image.thumbnail(self._target_image_size, LANCZOS)
-        image_bytes_io = BytesIO()
-        image.save(image_bytes_io, format="JPEG")
-        image.close()
-
-        image_bytes_io.seek(0)
-        image_bytes = image_bytes_io.read()
-        image_bytes_io.close()
-        return image_bytes
-
-    def _load_image_from_url_or_local_path(self, file_path):
-        urlparts = urlparse(file_path)
-        if urlparts.scheme in ('http', 'https'):
-            try:
-                file = self._session.get(file_path, stream=True).raw
-            except RequestException:
-                log.warning("Image skipped", exc_info=True)
-                return None
-        elif urlparts.scheme in ("ftp", "data"):
-            try:
-                file = urlopen(file_path)
-            except (URLError, ) + ftplib.all_errors:
-                log.warning("Image skipped", exc_info=True)
-                return None
-        else:
-            file = file_path
-
-        try:
-            return open_image(file)
-        except (IOError, ValueError):
-            log.warning("Image skipped", exc_info=True)
-            return None
-
     def _get_responses_from_server(self, http_streams, cache_keys,
-                                   image_processed_callback):
+                                   text_processed_callback):
         """Wait for responses from an http2 server in a blocking manner."""
         embeddings = []
 
@@ -280,13 +212,13 @@ class ImageEmbedder(Http2Client):
                 raise EmbeddingCancelledException()
 
             if not stream_id:
-                # skip rest of the waiting because image was either
+                # skip rest of the waiting because text was either
                 # skipped at loading or is present in the local cache
                 embedding = self._get_cached_result_or_none(cache_key)
                 embeddings.append(embedding)
 
-                if image_processed_callback:
-                    image_processed_callback()
+                if text_processed_callback:
+                    text_processed_callback()
                 continue
 
             try:
@@ -305,8 +237,8 @@ class ImageEmbedder(Http2Client):
                 embeddings.append(embedding)
                 self._cache_dict[cache_key] = embedding
 
-            if image_processed_callback:
-                image_processed_callback()
+            if text_processed_callback:
+                text_processed_callback()
 
         return embeddings
 

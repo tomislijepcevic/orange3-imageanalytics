@@ -3,15 +3,14 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-Welcome to Orange3 Image Analytics documentation!
+Welcome to Orange3 Text Embedding documentation!
 =============================================
 
 .. toctree::
    :maxdepth: 1
    :caption: Widgets
 
-   widgets/imageembedding
-   widgets/imageimport
+   widgets/textembedding
 
 
 Indices and tables

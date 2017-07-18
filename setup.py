@@ -8,7 +8,7 @@ from setuptools import setup, find_packages
 with io.open('about.md', 'r', encoding='utf-8') as f:
     ABOUT = f.read()
 
-NAME = 'Orange3-ImageAnalytics'
+NAME = 'Orange3-TextEmbedding'
 
 MAJOR = 0
 MINOR = 1
@@ -19,7 +19,7 @@ AUTHOR = 'Bioinformatics Laboratory, FRI UL'
 AUTHOR_EMAIL = 'contact@orange.biolab.si'
 
 URL = 'http://orange.biolab.si/download'
-DESCRIPTION = 'Orange3 add-on for image data mining.'
+DESCRIPTION = 'Orange3 add-on for text embedding.'
 LONG_DESCRIPTION = ABOUT
 LICENSE = 'GPL3+'
 
@@ -33,13 +33,13 @@ CLASSIFIERS = [
 
 KEYWORDS = [
     'orange3 add-on',
-    'orange3-imageanalytics'
+    'orange3-textembedding'
 ]
 
 PACKAGES = find_packages()
 
 PACKAGE_DATA = {
-    'orangecontrib.imageanalytics.widgets': ['icons/*.svg'],
+    'orangecontrib.textembedding.widgets': ['icons/*.svg'],
 }
 
 INSTALL_REQUIRES = sorted(set(
@@ -49,9 +49,9 @@ INSTALL_REQUIRES = sorted(set(
 
 ENTRY_POINTS = {
     'orange.widgets':
-        ('Image Analytics = orangecontrib.imageanalytics.widgets',),
+        ('Text Embedding = orangecontrib.textembedding.widgets',),
     'orange3.addon':
-        ('Orange3-Imageanalytics = orangecontrib.imageanalytics',)
+        ('Orange3-TextEmbedding = orangecontrib.textembedding',)
 }
 
 if __name__ == '__main__':
@@ -71,5 +71,5 @@ if __name__ == '__main__':
         install_requires=INSTALL_REQUIRES,
         namespace_packages=['orangecontrib'],
         entry_points=ENTRY_POINTS,
-        test_suite='orangecontrib.imageanalytics.tests.suite'
+        test_suite='orangecontrib.textembedding.tests.suite'
     )

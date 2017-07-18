@@ -11,12 +11,11 @@ from h2.exceptions import TooManyStreamsError
 from hyper.http20.exceptions import StreamResetError
 from numpy.testing import assert_array_equal
 
-from orangecontrib.imageanalytics.image_embedder import ImageEmbedder
+from orangecontrib.textembedding.text_embedder import TextEmbedder
+from orangecontrib.text.corpus import Corpus
 
-_TESTED_MODULE = 'orangecontrib.imageanalytics.http2_client.{:s}'
-_EXAMPLE_IMAGE_JPG = join(dirname(__file__), 'example_image_0.jpg')
-_EXAMPLE_IMAGE_TIFF = join(dirname(__file__), 'example_image_1.tiff')
-_EXAMPLE_IMAGE_GRAYSCALE = join(dirname(__file__), 'example_image_2.png')
+_TESTED_MODULE = 'orangecontrib.textembedding.http2_client.{:s}'
+_EXAMPLE_SINGLE = join(dirname(__file__), 'example_pubmed_abstracts.tab')
 
 
 # dummy classes for hyper.HTTP20Connection monkey patching
@@ -62,17 +61,18 @@ class DummyHttp2Connection(object):
         self.closed = True
 
 
-class ImageEmbedderTest(unittest.TestCase):
+class TextEmbedderTest(unittest.TestCase):
+
     @patch(_TESTED_MODULE.format('HTTP20Connection'), DummyHttp2Connection)
     def setUp(self):
         logging.disable(logging.CRITICAL)
-        self.embedder = ImageEmbedder(
-            model='inception-v3',
+        self.embedder = TextEmbedder(
+            model='pubmed',
             layer='penultimate',
             server_url='example.com',
         )
         self.embedder.clear_cache()
-        self.single_example = [_EXAMPLE_IMAGE_JPG]
+        self.single_example = Corpus.from_file(_EXAMPLE_SINGLE)
 
     def tearDown(self):
         self.embedder.clear_cache()
@@ -123,15 +123,6 @@ class ImageEmbedderTest(unittest.TestCase):
         self.embedder(self.single_example)
         self.assertEqual(self.embedder.is_connected_to_server(), True)
 
-    @patch(_TESTED_MODULE.format('HTTP20Connection'))
-    def test_with_non_existing_image(self, ConnectionMock):
-        self.single_example = ['/non_existing_image']
-
-        self.assertEqual(self.embedder(self.single_example), [None])
-        ConnectionMock.request.assert_not_called()
-        ConnectionMock.get_response.assert_not_called()
-        self.assertEqual(self.embedder._cache_dict, {})
-
     @patch(_TESTED_MODULE.format('HTTP20Connection'), DummyHttp2Connection)
     def test_on_successful_response(self):
         res = self.embedder(self.single_example)
@@ -159,49 +150,20 @@ class ImageEmbedderTest(unittest.TestCase):
         self.assertEqual(len(self.embedder._cache_dict), 1)
 
         self.embedder.persist_cache()
-        self.embedder = ImageEmbedder(
-            model='inception-v3',
+        self.embedder = TextEmbedder(
+            model='pubmed',
             layer='penultimate',
             server_url='example.com',
         )
         self.assertEqual(len(self.embedder._cache_dict), 1)
 
         self.embedder.clear_cache()
-        self.embedder = ImageEmbedder(
-            model='inception-v3',
+        self.embedder = TextEmbedder(
+            model='pubmed',
             layer='penultimate',
             server_url='example.com',
         )
         self.assertEqual(len(self.embedder._cache_dict), 0)
-
-    @patch(_TESTED_MODULE.format('HTTP20Connection'), DummyHttp2Connection)
-    def test_different_models_caches(self):
-        embedder = ImageEmbedder(
-            model='painters',
-            layer='penultimate',
-            server_url='example.com',
-        )
-        embedder.clear_cache()
-        self.assertEqual(len(embedder._cache_dict), 0)
-        embedder(self.single_example)
-        self.assertEqual(len(embedder._cache_dict), 1)
-        embedder.persist_cache()
-
-        self.embedder = ImageEmbedder(
-            model='inception-v3',
-            layer='penultimate',
-            server_url='example.com',
-        )
-        self.assertEqual(len(self.embedder._cache_dict), 0)
-        self.embedder.persist_cache()
-
-        embedder = ImageEmbedder(
-            model='painters',
-            layer='penultimate',
-            server_url='example.com',
-        )
-        self.assertEqual(len(embedder._cache_dict), 1)
-        embedder.clear_cache()
 
     @patch(_TESTED_MODULE.format('HTTP20Connection'), DummyHttp2Connection)
     def test_with_statement(self):
@@ -209,8 +171,8 @@ class ImageEmbedderTest(unittest.TestCase):
             embedder(self.single_example)
 
         self.assertEqual(self.embedder.is_connected_to_server(), False)
-        self.embedder = ImageEmbedder(
-            model='inception-v3',
+        self.embedder = TextEmbedder(
+            model='pubmed',
             layer='penultimate',
             server_url='example.com',
         )
@@ -221,24 +183,9 @@ class ImageEmbedderTest(unittest.TestCase):
         self.assertEqual(self.embedder._max_concurrent_streams, 128)
 
     @patch(_TESTED_MODULE.format('HTTP20Connection'), DummyHttp2Connection)
-    def test_too_many_examples_for_one_batch(self):
-        too_many_examples = [_EXAMPLE_IMAGE_JPG for _ in range(200)]
-        true_res = [np.array([0, 1], dtype=np.float16) for _ in range(200)]
-        true_res = np.array(true_res)
-
-        res = self.embedder(too_many_examples)
-        assert_array_equal(res, true_res)
-
-    @patch(_TESTED_MODULE.format('HTTP20Connection'), DummyHttp2Connection)
-    def test_successful_result_shape(self):
-        more_examples = [_EXAMPLE_IMAGE_JPG for _ in range(5)]
-        res = self.embedder(more_examples)
-        self.assertEqual(res.shape, (5, 2))
-
-    @patch(_TESTED_MODULE.format('HTTP20Connection'), DummyHttp2Connection)
     def test_invalid_model(self):
         with self.assertRaises(ValueError):
-            self.embedder = ImageEmbedder(
+            self.embedder = TextEmbedder(
                 model='invalid_model',
                 layer='penultimate',
                 server_url='example.com',
@@ -247,23 +194,11 @@ class ImageEmbedderTest(unittest.TestCase):
     @patch(_TESTED_MODULE.format('HTTP20Connection'), DummyHttp2Connection)
     def test_invalid_layer(self):
         with self.assertRaises(ValueError):
-            self.embedder = ImageEmbedder(
-                model='inception-v3',
+            self.embedder = TextEmbedder(
+                model='pubmed',
                 layer='first',
                 server_url='example.com',
             )
-
-    @patch(_TESTED_MODULE.format('HTTP20Connection'), DummyHttp2Connection)
-    def test_with_grayscale_image(self):
-        res = self.embedder([_EXAMPLE_IMAGE_GRAYSCALE])
-        assert_array_equal(res, np.array([np.array([0, 1], dtype=np.float16)]))
-        self.assertEqual(len(self.embedder._cache_dict), 1)
-
-    @patch(_TESTED_MODULE.format('HTTP20Connection'), DummyHttp2Connection)
-    def test_with_tiff_image(self):
-        res = self.embedder([_EXAMPLE_IMAGE_TIFF])
-        assert_array_equal(res, np.array([np.array([0, 1], dtype=np.float16)]))
-        self.assertEqual(len(self.embedder._cache_dict), 1)
 
     @patch(_TESTED_MODULE.format('HTTP20Connection'), DummyHttp2Connection)
     def test_server_url_env_var(self):
@@ -271,8 +206,8 @@ class ImageEmbedderTest(unittest.TestCase):
         self.assertTrue(self.embedder._server_url != url_value)
 
         environ['ORANGE_EMBEDDING_API_URL'] = url_value
-        self.embedder = ImageEmbedder(
-            model='inception-v3',
+        self.embedder = TextEmbedder(
+            model='pubmed',
             layer='penultimate',
             server_url='example.com',
         )

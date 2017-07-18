@@ -51,7 +51,7 @@ source_encoding = 'utf-8'
 master_doc = 'index'
 
 # General information about the project.
-project = 'Orange3 Image Analytics'
+project = 'Orange3 Text Embedding'
 copyright = '2016, Laboratory of Bioinformatics, Faculty of Computer Science, University of Ljubljana'
 
 # The version info for the project you're documenting, acts as replacement for
@@ -184,7 +184,7 @@ html_theme = 'nature'
 #html_file_suffix = None
 
 # Output file base name for HTML help builder.
-htmlhelp_basename = 'Orange3ImageAnalyticsdoc'
+htmlhelp_basename = 'Orange3TextEmbeddingdoc'
 
 
 # -- Options for LaTeX output ---------------------------------------------
@@ -204,7 +204,7 @@ latex_elements = {
 # (source start file, target name, title,
 #  author, documentclass [howto, manual, or own class]).
 latex_documents = [
-  ('index', 'Orange3ImageAnalytics.tex', 'Orange3 Image Analytics Documentation',
+  ('index', 'Orange3TextEmbedding.tex', 'Orange3 Text Embedding Documentation',
    'Biolab', 'manual'),
 ]
 
@@ -234,7 +234,7 @@ latex_documents = [
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
 man_pages = [
-    ('index', 'orange3imageanalytics', 'Orange3 Image Analytics Documentation',
+    ('index', 'orange3textembedding', 'Orange3 Text Embedding Documentation',
      ['Laboratory of Bioinformatics, Faculty of Computer Science, University of Ljubljana'], 1)
 ]
 
@@ -248,8 +248,8 @@ man_pages = [
 # (source start file, target name, title, author,
 #  dir menu entry, description, category)
 texinfo_documents = [
-  ('index', 'Orange3ImageAnalytics', 'Orange3 Image Analytics Documentation',
-   'Laboratory of Bioinformatics, Faculty of Computer Science, University of Ljubljana', 'Orange3ImageAnalytics', 'One line description of project.',
+  ('index', 'Orange3TextEmbedding', 'Orange3 Text Embedding Documentation',
+   'Laboratory of Bioinformatics, Faculty of Computer Science, University of Ljubljana', 'Orange3TextEmbedding', 'One line description of project.',
    'Miscellaneous'),
 ]
 
