@@ -12,10 +12,13 @@ from hyper.http20.exceptions import StreamResetError
 from numpy.testing import assert_array_equal
 
 from orangecontrib.textembedding.text_embedder import TextEmbedder
-from orangecontrib.text.corpus import Corpus
 
 _TESTED_MODULE = 'orangecontrib.textembedding.http2_client.{:s}'
-_EXAMPLE_SINGLE = join(dirname(__file__), 'example_pubmed_abstracts.tab')
+_EXAMPLE_PUBMED_ABSTRACT = join(dirname(__file__), 'pubmed_abstract.txt')
+
+with open(_EXAMPLE_PUBMED_ABSTRACT) as f:
+    abstract = next(f).rstrip('\n')
+    _EXAMPLE_PUBMED_ABSTRACT = [ abstract ]
 
 
 # dummy classes for hyper.HTTP20Connection monkey patching
@@ -72,7 +75,7 @@ class TextEmbedderTest(unittest.TestCase):
             server_url='example.com',
         )
         self.embedder.clear_cache()
-        self.single_example = Corpus.from_file(_EXAMPLE_SINGLE)
+        self.single_example = _EXAMPLE_PUBMED_ABSTRACT
 
     def tearDown(self):
         self.embedder.clear_cache()

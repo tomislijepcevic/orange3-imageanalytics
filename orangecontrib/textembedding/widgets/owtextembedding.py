@@ -9,6 +9,7 @@ from AnyQt.QtCore import pyqtSlot as Slot
 from AnyQt.QtTest import QSignalSpy
 from AnyQt.QtWidgets import QLayout, QPushButton, QStyle
 
+from Orange.data import Table, ContinuousVariable, Domain
 from Orange.widgets.gui import hBox
 from Orange.widgets.gui import widgetBox, widgetLabel, comboBox, auto_commit
 from Orange.widgets.settings import Setting
@@ -18,10 +19,9 @@ from Orange.widgets.widget import OWWidget, Default
 
 from orangecontrib.textembedding.text_embedder import TextEmbedder
 from orangecontrib.textembedding.text_embedder import MODELS as EMBEDDERS_INFO
-from orangecontrib.text.corpus import Corpus, get_sample_corpora_dir
 
 class _Input:
-    TEXTS = 'Corpus'
+    DATA = 'Data'
 
 
 class _Output:
@@ -37,8 +37,8 @@ class OWTextEmbedding(OWWidget):
     want_main_area = False
     _auto_apply = Setting(default=True)
 
-    inputs = [(_Input.TEXTS, Corpus, 'set_data')]
-    outputs = [(_Output.EMBEDDINGS, Corpus, Default)]
+    inputs = [(_Input.DATA, Table, 'set_data')]
+    outputs = [(_Output.EMBEDDINGS, Table, Default)]
 
     cb_text_attr_current_id = Setting(default=0)
     cb_embedder_current_id = Setting(default=0)
@@ -69,6 +69,14 @@ class OWTextEmbedding(OWWidget):
         self.connection_info = widgetLabel(widget_box, "")
 
         widget_box = widgetBox(self.controlArea, 'Settings')
+        self.cb_text_attr = comboBox(
+            widget=widget_box,
+            master=self,
+            value='cb_text_attr_current_id',
+            label='Text attribute:',
+            orientation=Qt.Horizontal,
+            callback=self._cb_text_attr_changed
+        )
 
         self.cb_embedder = comboBox(
             widget=widget_box,
@@ -124,9 +132,35 @@ class OWTextEmbedding(OWWidget):
             self.input_data_info.setText(self._NO_DATA_INFO_TEXT)
             return
 
+        self._text_attributes = self._filter_text_attributes(data)
+        if not self._text_attributes:
+            input_data_info_text = (
+                "Data with {:d} instances, but without text attributes."
+                .format(len(data)))
+            input_data_info_text.format(input_data_info_text)
+            self.input_data_info.setText(input_data_info_text)
+            self._input_data = None
+            return
+
+        if not self.cb_text_attr_current_id < len(self._text_attributes):
+            self.cb_text_attr_current_id = 0
+
+        self.cb_text_attr.setModel(VariableListModel(self._text_attributes))
+        self.cb_text_attr.setCurrentIndex(self.cb_text_attr_current_id)
+
         self._input_data = data
         input_data_info_text = "Data with {:d} instances.".format(len(data))
         self.input_data_info.setText(input_data_info_text)
+
+        self._cb_text_attr_changed()
+
+    @staticmethod
+    def _filter_text_attributes(data):
+        metas = data.domain.metas
+        return [ m for m in metas if m.is_string ]
+
+    def _cb_text_attr_changed(self):
+        self.commit()
 
     def _cb_embedder_changed(self):
         current_embedder = self.embedders[self.cb_embedder_current_id]
@@ -138,6 +172,7 @@ class OWTextEmbedding(OWWidget):
             EMBEDDERS_INFO[current_embedder]['description'])
         self.commit()
 
+
     def commit(self):
         if self._task is not None:
             self.cancel()
@@ -146,17 +181,19 @@ class OWTextEmbedding(OWWidget):
             self._set_server_info(connected=False)
             return
 
-        if self._input_data is None:
+        if not self._text_attributes or self._input_data is None:
             self.send(_Output.EMBEDDINGS, None)
             return
 
         self._set_server_info(connected=True)
         self.cancel_button.show()
+        self.cb_text_attr.setDisabled(True)
         self.cb_embedder.setDisabled(True)
 
-        corpus = self._input_data
+        texts_attr = self._text_attributes[self.cb_text_attr_current_id]
+        texts = self._input_data[:, texts_attr].metas.flatten()
 
-        ticks = iter(np.linspace(0.0, 100.0, len(corpus.documents)))
+        ticks = iter(np.linspace(0.0, 100.0, len(texts)))
         set_progress = qconcurrent.methodinvoke(
             self, "__progress_set", (float,))
 
@@ -170,26 +207,26 @@ class OWTextEmbedding(OWWidget):
 
         embedder = self._text_embedder
 
-        def run_embedding(corpus):
-            return embedder(corpus=corpus, text_processed_callback=advance)
+        def run_embedding(texts):
+            return embedder(texts=texts, text_processed_callback=advance)
 
         self.auto_commit_widget.setDisabled(True)
         self.progressBarInit(processEvents=None)
         self.progressBarSet(0.0, processEvents=None)
         self.setBlocking(True)
 
-        f = self._executor.submit(run_embedding, corpus)
+        f = self._executor.submit(run_embedding, texts)
         f.add_done_callback(
             qconcurrent.methodinvoke(self, "__set_results", (object,)))
 
         task = self._task = namespace(
-            corpus=corpus,
+            texts=texts,
             embedder=embedder,
             cancelled=False,
             cancel=cancel,
             future=f,
         )
-        self._log.debug("Starting embedding task for %i texts", len(corpus.documents))
+        self._log.debug("Starting embedding task for %i texts", len(texts))
         return
 
     @Slot(float)
@@ -210,6 +247,7 @@ class OWTextEmbedding(OWWidget):
         task, self._task = self._task, None
         self.auto_commit_widget.setDisabled(False)
         self.cancel_button.hide()
+        self.cb_text_attr.setDisabled(False)
         self.cb_embedder.setDisabled(False)
         self.progressBarFinished(processEvents=None)
         self.setBlocking(False)
@@ -228,13 +266,35 @@ class OWTextEmbedding(OWWidget):
             return
 
         assert self._input_data is not None
-        assert len(self._input_data.documents) == embeddings.shape[0]
+        assert len(self._input_data) == embeddings.shape[0]
 
-        feature_names = ['n%d' % i for i in range(embeddings.shape[1])]
+        self._send_output_signals(embeddings)
 
-        self._input_data.extend_attributes(embeddings, feature_names)
+    def _send_output_signals(self, embeddings):
+            embedded_texts = self._construct_output_data_table(
+                self._input_data,
+                embeddings
+            )
+            embedded_texts.ids = self._input_data.ids
 
-        self.send(_Output.EMBEDDINGS, self._input_data)
+            self.send(_Output.EMBEDDINGS, embedded_texts)
+
+    @staticmethod
+    def _construct_output_data_table(embedded_texts, embeddings):
+        X = embeddings
+        Y = embedded_texts.Y
+
+        attributes = [ContinuousVariable.make('n{:d}'.format(d))
+                      for d in range(embeddings.shape[1])]
+        attributes = list(embedded_texts.domain.attributes) + attributes
+
+        domain = Domain(
+            attributes=attributes,
+            class_vars=embedded_texts.domain.class_vars,
+            metas=embedded_texts.domain.metas
+        )
+
+        return Table(domain, X, Y, embedded_texts.metas)
 
     def _set_server_info(self, connected):
         self.clear_messages()
@@ -263,6 +323,7 @@ class OWTextEmbedding(OWWidget):
             self.cancel_button.hide()
             self.progressBarFinished(processEvents=None)
             self.setBlocking(False)
+            self.cb_text_attr.setDisabled(False)
             self.cb_embedder.setDisabled(False)
             self._text_embedder.cancelled = False
             # reset the connection.
@@ -279,9 +340,9 @@ def main(argv=None):
     if len(argv) > 1:
         file_path = argv[1]
     else:
-        file_path = os.path.join(get_sample_corpora_dir(), 'deerwester.tab')
+        file_path = 'tests/pubmed_dataset.tab'
 
-    data = Corpus.from_file(file_path)
+    data = Table(file_path)
     widget = OWTextEmbedding()
     widget.show()
     assert QSignalSpy(widget.blockingStateChanged).wait()

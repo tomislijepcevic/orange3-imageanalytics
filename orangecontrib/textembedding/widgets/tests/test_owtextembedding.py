@@ -1,7 +1,6 @@
-import os
+from os.path import join, dirname
 
 from Orange.data import Table
-from orangecontrib.text.corpus import Corpus, get_sample_corpora_dir
 from Orange.widgets.tests.base import WidgetTest
 from orangecontrib.textembedding.widgets.owtextembedding import OWTextEmbedding
 
@@ -11,8 +10,8 @@ class TestOWTextEmbedding(WidgetTest):
     def setUpClass(cls):
         super().setUpClass()
 
-        cls.signal_name = "Corpus"
-        cls.signal_data = Table("iris")
+        cls.signal_name = "Data"
+        cls.signal_data = Table(join(dirname(__file__), 'pubmed_dataset.tab'))
 
     def setUp(self):
         self.widget = self.create_widget(OWTextEmbedding)
@@ -23,12 +22,11 @@ class TestOWTextEmbedding(WidgetTest):
         GH-45
         GH-46
         """
-        table = Table("iris")
-        self.send_signal("Corpus", table)
+        self.send_signal("Data", self.signal_data)
 
     def test_none_data(self):
         """
         It should not fail when there is no data.
         GH-46
         """
-        self.send_signal("Corpus", None)
+        self.send_signal("Data", None)

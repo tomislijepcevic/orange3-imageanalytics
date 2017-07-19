@@ -10,20 +10,18 @@ Signals
 
 **Inputs**:
 
--  **Corpus**
+-  **Data**
 
-   Text Corpus.
+   Data with a string feature.
 
 **Outputs**:
 
 -  **Embeddings**
 
-   Each document is represented with a vector of numbers.
+   An embedding (a vector of numbers) for each string value.
 
 Description
 -----------
 
-**Text Embedding** reads documents of given corpus and uploads them to a remote 
-server. Remote server uses a deep learning model to calculate a feature 
-vector for each document.
+**Text Embedding** uses a deep learning model on a remote server to obtain an embedding (a feature vector) of a text (a value of a string feature).
 

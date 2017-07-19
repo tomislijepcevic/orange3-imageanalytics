@@ -42,7 +42,7 @@ class TextEmbedder(Http2Client):
     """
     _cache_file_blueprint = '{:s}_{:s}_embeddings.pickle'
 
-    def __init__(self, model, layer, server_url='kista:8080'):
+    def __init__(self, model, layer, server_url='localhost:8080'):
         super().__init__(server_url)
         model_settings = self._get_model_settings_confidently(model, layer)
         self._model = model
@@ -90,14 +90,14 @@ class TextEmbedder(Http2Client):
 
         return {}
 
-    def __call__(self, corpus, text_processed_callback=None):
+    def __call__(self, texts, text_processed_callback=None):
         """Send the texts to the remote server in batches. The batch size
         parameter is set by the http2 remote peer (i.e. the server).
 
         Parameters
         ----------
-        corpus: Corpus
-            A corpus of texts to be embedded.
+        texts: list
+            A list of texts to be embedded.
 
         text_processed_callback: callable (default=None)
             A function that is called after each text is fully processed
@@ -124,7 +124,7 @@ class TextEmbedder(Http2Client):
 
         all_embeddings = []
 
-        for batch in self._yield_in_batches(corpus.documents):
+        for batch in self._yield_in_batches(texts):
             try:
                 embeddings = self._send_to_server(
                     batch, text_processed_callback
@@ -171,9 +171,15 @@ class TextEmbedder(Http2Client):
             if self.cancelled:
                 raise EmbeddingCancelledException()
 
-            cache_key = md5_hash(text.encode('utf-8'))
+            text_bytes = text.encode('utf-8')
+
+            if (len(text_bytes) / 1024).is_integer():
+                text += ' '
+                text_bytes = text.encode('utf-8')
+
+            cache_key = md5_hash(text_bytes)
             cache_keys.append(cache_key)
-            if cache_key in self._cache_dict and False:
+            if cache_key in self._cache_dict:
                 # skip the sending because text is present in the
                 # local cache
                 http_streams.append(None)
@@ -182,13 +188,13 @@ class TextEmbedder(Http2Client):
             try:
                 headers = {
                     'Content-Type': 'text/plain',
-                    'Content-Length': str(len(text))
+                    'Content-Length': str(len(text_bytes))
                 }
                 stream_id = self._send_request(
                     method='POST',
                     url='/text/' + self._model,
                     headers=headers,
-                    body_bytes=text
+                    body_bytes=text_bytes
                 )
                 http_streams.append(stream_id)
             except ConnectionError:
@@ -233,7 +239,7 @@ class TextEmbedder(Http2Client):
                 embeddings.append(None)
             else:
                 # successful response
-                embedding = np.array(response['embedding'], dtype=np.float16)
+                embedding = np.array(response['embedding'], dtype=np.float32)
                 embeddings.append(embedding)
                 self._cache_dict[cache_key] = embedding
 
