@@ -42,7 +42,7 @@ class TextEmbedder(Http2Client):
     """
     _cache_file_blueprint = '{:s}_{:s}_embeddings.pickle'
 
-    def __init__(self, model, layer, server_url='localhost:8080'):
+    def __init__(self, model, layer, server_url='api.biolab.si:8080'):
         super().__init__(server_url)
         model_settings = self._get_model_settings_confidently(model, layer)
         self._model = model
